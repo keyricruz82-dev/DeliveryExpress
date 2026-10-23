@@ -19,3 +19,6 @@ dist/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Copias de respaldo locales
+frontend/src/* copy*
