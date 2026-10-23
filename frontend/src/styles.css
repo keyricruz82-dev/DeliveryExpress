@@ -1993,7 +1993,7 @@ h3 {
 
 .filter-summary strong {
   color: var(--texto);
-  font-weight: 800;
+  font-weight: 800;  
 }
 
 @media (max-width: 600px) {
