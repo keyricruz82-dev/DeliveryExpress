@@ -19,7 +19,6 @@ class ProductoCrear(BaseModel):
     imagen_url: str | None = Field(default=None, max_length=500)
     disponible: bool = True
 
-
 class ProductoRespuesta(BaseModel):
     model_config = ConfigDict(from_attributes=True)
     id: int
@@ -29,3 +28,11 @@ class ProductoRespuesta(BaseModel):
     precio: float
     imagen_url: str | None
     disponible: bool 
+
+class ProductoActualizar(BaseModel):
+    categoria_id: int | None = Field(default=None, gt=0)
+    nombre: str | None = Field(default=None, min_length=2, max_length=150)
+    descripcion: str | None = None
+    precio: float | None = Field(default=None, gt=0, le=99999999.99)
+    imagen_url: str | None = Field(default=None, max_length=500)
+    disponible: bool | None = None

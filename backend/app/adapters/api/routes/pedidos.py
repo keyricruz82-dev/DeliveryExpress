@@ -6,7 +6,12 @@ from typing import Literal
 
 from app.adapters.api.schemas.pedido import PedidoCrear, PedidoRespuesta
 from app.infrastructure.database import obtener_sesion
-from app.infrastructure.models import PedidoModel
+from decimal import Decimal 
+from app.infrastructure.models import (
+    PedidoModel,
+    ProductoModel,
+    DetallePedidoModel,
+)
 
 router = APIRouter(tags=["Pedidos"])
 
@@ -19,6 +24,7 @@ class PedidoEstadoActualizar(BaseModel):
         "cancelado",
     ]
 
+ 
 @router.post(
     "",
     response_model=PedidoRespuesta,
@@ -28,16 +34,74 @@ def crear_pedido(
     datos: PedidoCrear,
     sesion: Session = Depends(obtener_sesion),
 ):
+    # Evitar productos repetidos en la misma solicitud.
+    ids_productos = [item.producto_id for item in datos.productos]
+
+    if len(ids_productos) != len(set(ids_productos)):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No repitas productos en el pedido.",
+        )
+
+    productos_db = (
+        sesion.query(ProductoModel)
+        .filter(ProductoModel.id.in_(ids_productos))
+        .all()
+    )
+
+    productos_por_id = {
+        producto.id: producto for producto in productos_db
+    }
+
+    if len(productos_por_id) != len(ids_productos):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Uno o más productos no existen.",
+        )
+
+    for item in datos.productos:
+        producto = productos_por_id[item.producto_id]
+
+        if not producto.disponible:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"El producto '{producto.nombre}' no está disponible.",
+            )
+
+    total_calculado = sum(
+        (
+            Decimal(str(productos_por_id[item.producto_id].precio))
+            * item.cantidad
+            for item in datos.productos
+        ),
+        Decimal("0.00"),
+    )
+
     nuevo_pedido = PedidoModel(
         cliente_id=datos.cliente_id,
         direccion_entrega=datos.direccion_entrega,
-        total=datos.total,
+        total=total_calculado,
         estado="pendiente",
     )
+
     try:
         sesion.add(nuevo_pedido)
+        sesion.flush()
+
+        for item in datos.productos:
+            producto = productos_por_id[item.producto_id]
+
+            detalle = DetallePedidoModel(
+                pedido_id=nuevo_pedido.id,
+                producto_id=producto.id,
+                cantidad=item.cantidad,
+                precio_unitario=producto.precio,
+            )
+            sesion.add(detalle)
+
         sesion.commit()
         sesion.refresh(nuevo_pedido)
+
         return nuevo_pedido
 
     except Exception as error:
@@ -49,7 +113,7 @@ def crear_pedido(
         )
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Error al guardar pedido: {type(error).__name__}",
+            detail="No fue posible guardar el pedido.",
         ) from error
 
 @router.get("", response_model=list[PedidoRespuesta])
