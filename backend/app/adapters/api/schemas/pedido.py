@@ -1,11 +1,20 @@
+
 from datetime import datetime
 from decimal import Decimal
+
 from pydantic import BaseModel, ConfigDict, Field
+
+
+class ProductoPedidoCrear(BaseModel):
+    producto_id: int = Field(gt=0)
+    cantidad: int = Field(gt=0)
+
 
 class PedidoCrear(BaseModel):
     cliente_id: int = Field(gt=0)
     direccion_entrega: str = Field(min_length=5, max_length=300)
-    total: Decimal = Field(gt=0, max_digits=10, decimal_places=2)
+    productos: list[ProductoPedidoCrear] = Field(min_length=1)
+
 
 class PedidoRespuesta(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -16,4 +25,3 @@ class PedidoRespuesta(BaseModel):
     total: Decimal
     estado: str
     fecha_creacion: datetime
-

@@ -7,6 +7,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     func,
+    FetchedValue,
 )
 from sqlalchemy.orm import (
     DeclarativeBase,
@@ -136,4 +137,42 @@ class ProductoModel(Base):
 
     categoria: Mapped["CategoriaModel"] = relationship(
         back_populates="productos",
+    ) 
+    
+    
+class DetallePedidoModel(Base):
+    __tablename__ = "detalle_pedidos"
+
+    id: Mapped[int] = mapped_column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    pedido_id: Mapped[int] = mapped_column(
+        ForeignKey("pedidos.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+
+    producto_id: Mapped[int] = mapped_column(
+        ForeignKey("productos.id"),
+        nullable=False,
+        index=True,
+    )
+
+    cantidad: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+    )
+
+    precio_unitario: Mapped[float] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+    )
+
+    subtotal: Mapped[float] = mapped_column(
+        Numeric(10, 2),
+        nullable=False,
+        server_default=FetchedValue(),
     ) 

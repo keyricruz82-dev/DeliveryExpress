@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from app.adapters.api.schemas.catalogo import (
     CategoriaCrear,
     CategoriaRespuesta,
+    ProductoActualizar,
     ProductoCrear,
     ProductoRespuesta,
 )
@@ -150,4 +151,65 @@ def crear_producto(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="No fue posible guardar el producto.",
+        ) from error
+
+
+@router.patch(
+    "/productos/{producto_id}",
+    response_model=ProductoRespuesta,
+)
+def actualizar_producto(
+    producto_id: int,
+    datos: ProductoActualizar,
+    sesion: Session = Depends(obtener_sesion),
+):
+    producto = (
+        sesion.query(ProductoModel)
+        .filter(ProductoModel.id == producto_id)
+        .first()
+    )
+
+    if producto is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="El producto no existe.",
+        )
+
+    cambios = datos.model_dump(exclude_unset=True)
+
+    if not cambios:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Debes proporcionar al menos un campo para actualizar.",
+        )
+
+    if "categoria_id" in cambios:
+        categoria = (
+            sesion.query(CategoriaModel)
+            .filter(
+                CategoriaModel.id == cambios["categoria_id"],
+                CategoriaModel.activa.is_(True),
+            )
+            .first()
+        )
+
+        if categoria is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="La categoría no existe o está inactiva.",
+            )
+
+    try:
+        for campo, valor in cambios.items():
+            setattr(producto, campo, valor)
+
+        sesion.commit()
+        sesion.refresh(producto)
+        return producto
+
+    except SQLAlchemyError as error:
+        sesion.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="No fue posible actualizar el producto.",
         ) from error

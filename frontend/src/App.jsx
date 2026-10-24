@@ -61,16 +61,200 @@ export default function App() {
   const [pedidos, setPedidos] = useState([])
   const [productos, setProductos] = useState([])
   const [categorias, setCategorias] = useState([])
+  const [carrito, setCarrito] = useState([])
   const [cargando, setCargando] = useState(false)
   const [guardando, setGuardando] = useState(false)
   const [actualizandoEstado, setActualizandoEstado] = useState(null)
   const [mensaje, setMensaje] = useState('')
   const [error, setError] = useState('')
   const [filtroEstado, setFiltroEstado] = useState('todos')
+  const [nuevoNombre, setNuevoNombre] = useState('')
+const [nuevaDescripcion, setNuevaDescripcion] = useState('')
+const [nuevoPrecio, setNuevoPrecio] = useState('')
+const [nuevaCategoria, setNuevaCategoria] = useState('')
+const [nuevaImagen, setNuevaImagen] = useState('')
+const [guardandoProducto, setGuardandoProducto] = useState(false)
+const [mensajeProducto, setMensajeProducto] = useState('')
+const [errorProducto, setErrorProducto] = useState('')
+
 
   const [clienteId, setClienteId] = useState('1')
   const [direccion, setDireccion] = useState('')
   const [total, setTotal] = useState('')
+
+
+  async function agregarProducto(event) {
+  event.preventDefault()
+
+  const precio = Number(nuevoPrecio)
+  const categoriaId = Number(nuevaCategoria)
+
+  if (!nuevoNombre.trim()) {
+    setErrorProducto('El nombre del producto es obligatorio.')
+    return
+  }
+
+  if (!Number.isFinite(precio) || precio <= 0) {
+    setErrorProducto('El precio debe ser mayor que cero.')
+    return
+  }
+
+  if (!categoriaId) {
+    setErrorProducto('Selecciona una categoría.')
+    return
+  }
+
+  setGuardandoProducto(true)
+  setErrorProducto('')
+  setMensajeProducto('')
+
+  try {
+    const respuesta = await fetch(`${API_URL}/catalogo/productos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        nombre: nuevoNombre.trim(),
+        descripcion: nuevaDescripcion.trim(),
+        precio,
+        categoria_id: categoriaId,
+        imagen_url: nuevaImagen.trim() || null,
+        disponible: true,
+      }),
+    })
+
+    const datos = await respuesta.json()
+
+    if (!respuesta.ok) {
+      throw new Error(
+        typeof datos.detail === 'string'
+          ? datos.detail
+          : 'No fue posible guardar el producto.'
+      )
+    }
+
+    const respuestaCatalogo = await fetch(
+      `${API_URL}/catalogo/productos`
+    )
+
+    if (respuestaCatalogo.ok) {
+      setProductos(await respuestaCatalogo.json())
+    }
+
+    setNuevoNombre('')
+    setNuevaDescripcion('')
+    setNuevoPrecio('')
+    setNuevaCategoria('')
+    setNuevaImagen('')
+    setMensajeProducto('¡Producto agregado correctamente al catálogo!')
+  } catch (error) {
+    setErrorProducto(error.message || 'Error al guardar el producto.')
+  } finally {
+    setGuardandoProducto(false)
+  }
+}
+
+  const agregarAlCarrito = (producto) => {
+    if (!producto.disponible) return
+    setCarrito((carritoActual) => {
+      const productoExistente = carritoActual.find(
+        (item) => item.id === producto.id
+      )
+      if (productoExistente) {
+        return carritoActual.map((item) =>
+          item.id === producto.id
+        ? { ...item, cantidad: item.cantidad + 1 } : item
+      )
+    }
+    return [...carritoActual, { ...producto, cantidad: 1 }]
+  })
+  setMensaje(`${producto.nombre} agregado al carrito.`)
+  setError('')
+}
+
+const cambiarCantidadCarrito = (productoId, cambio) => {
+  setCarrito((carritoActual) =>
+    carritoActual
+      .map((item) =>
+        item.id === productoId
+          ? { ...item, cantidad: item.cantidad + cambio }
+          : item
+      )
+      .filter((item) => item.cantidad > 0)
+  )
+}
+
+const eliminarDelCarrito = (productoId) => {
+  setCarrito((carritoActual) =>
+    carritoActual.filter((item) => item.id !== productoId)
+  )
+}
+
+
+const crearPedidoDesdeCarrito = async () => {
+  if (carrito.length === 0) {
+    setError('Agrega al menos un producto al carrito.')
+    setMensaje('')
+    return
+  }
+
+  if (!direccion.trim() || direccion.trim().length < 5) {
+    setError('Escribe una dirección de entrega válida.')
+    setMensaje('')
+    return
+  }
+
+  setGuardando(true)
+  setError('')
+  setMensaje('')
+
+  try {
+    const respuesta = await fetch(`${API_URL}/pedidos`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        cliente_id: Number(clienteId),
+        direccion_entrega: direccion.trim(),
+        productos: carrito.map((item) => ({
+          producto_id: item.id,
+          cantidad: item.cantidad,
+        })),
+      }),
+    })
+
+    const datos = await respuesta.json()
+
+    if (!respuesta.ok) {
+      throw new Error(
+        datos.detail || 'No fue posible registrar el pedido.'
+      )
+    }
+
+    setMensaje(`¡Pedido #${datos.id} registrado correctamente!`)
+    setError('')
+    setCarrito([])
+    setDireccion('')
+
+    await cargarPedidos()
+    setPestanaActiva('pedidos')
+  } catch (error) {
+    setError(
+      error.message || 'Ocurrió un error al registrar el pedido.'
+    )
+  } finally {
+    setGuardando(false)
+  }
+}
+
+
+const totalCarrito = carrito.reduce(
+  (suma, item) => suma + Number(item.precio) * item.cantidad,
+  0
+)
+
 
   const pedidosFiltrados =
     filtroEstado === 'todos'
@@ -375,19 +559,19 @@ export default function App() {
               </div>
               <div className="module-grid">
                 {roles.map(({ title, description, icon: Icon, tag }) => (
-                  <article className="module-card" key={title}>
-                    <div className="module-icon">
-                      <Icon size={23} />
+                  <article className="module-card" key={title}><div className="module-icon">
+                    <Icon size={23} />
                     </div>
-                  <span className="module-tag">{tag}</span>
+                    <span className="module-tag">{tag}</span>
                     <h3>{title}</h3>
-                  <p>{description}</p>
-                  <button className="module-status" type="button" onClick={() => setPestanaActiva('pedidos')}> Ir a pedidos <span>↗</span> </button>
-                  </article>
+                    <p>{description}</p>
+                    <button className="module-status" type="button" onClick={() => setPestanaActiva('pedidos')}> Ir a pedidos <span>↗</span></button>
+                    </article>
                   ))}
-              </div>
-            </section>
-          </>)}      
+                  </div>
+                  </section>
+          </>
+      )}      
       {/* CATÁLOGO DE PRODUCTOS */}
       {pestanaActiva === 'catalogo' && (<>
       <section className="catalog-section">
@@ -414,55 +598,168 @@ export default function App() {
             </div>
           ))}
         </div>
-
-        <div className="product-grid">
-          {productos.length > 0 ? (
-            productos.map((producto) => (
-              <article className="product-card" key={producto.id}>
-                <div className="product-image-placeholder">
-                  <ShoppingBag size={34} />
-                </div>
-
-                <div className="product-content">
-                  <span className="product-category">
-                    {categorias.find(
-                      (categoria) => categoria.id === producto.categoria_id
-                    )?.nombre || 'Producto'}
-                  </span>
-
-                  <h3>{producto.nombre}</h3>
-                  <p>{producto.descripcion || 'Delicioso y preparado para ti.'}</p>
-
-                  <div className="product-footer">
-                    <strong>${Number(producto.precio).toFixed(2)}</strong>
-                    <span className="availability-label">
-                      Disponible
-                    </span>
+        <div className="catalog-products-by-category">
+          {categorias.map((categoria) => {
+            const productosCategoria = productos.filter(
+              (producto) =>
+                Number(producto.categoria_id) === Number(categoria.id)
+            )
+            if (productosCategoria.length === 0) {
+              return null
+             }
+             return (
+               <section className="catalog-category-section" key={categoria.id} >
+                <div className="catalog-category-heading">
+                  <div>
+                    <span className="eyebrow">NUESTRO MENÚ</span>
+                      <h3>{categoria.nombre}</h3>
+                    <p>{categoria.descripcion}</p>
                   </div>
+                  <span className="catalog-category-count">
+                    {productosCategoria.length}{' '}
+                     {productosCategoria.length === 1
+                     ? 'producto'
+                     : 'productos'}
+                 </span>
                 </div>
-              </article>
-            ))
-          ) : (
-            <p className="catalog-empty">
-              No hay productos disponibles en este momento.
-            </p>
-          )}
+                
+                <div className="product-grid">
+                  {productosCategoria.map((producto) => (
+                    <article className="product-card" key={producto.id}>
+                   <div className="product-image-placeholder"> <ShoppingBag size={34} className="product-image-fallback" />
+                   {producto.imagen_url && (
+                    <img src={producto.imagen_url} alt={producto.nombre} className="product-image" onError={(event) => {
+                      event.currentTarget.style.display = 'none'
+                    }}/>
+                    )}
+                    </div>
+                   <div className="product-content"> <span className="product-category"> {categoria.nombre} </span>
+                      <h3>{producto.nombre}</h3>
+                    <p> {producto.descripcion || 'Delicioso y preparado para ti.'} </p>
+
+                    <div className="product-footer">
+                      <strong> ${Number(producto.precio).toFixed(2)} </strong>
+                      <button type="button" className="add-to-cart-button" disabled={!producto.disponible} onClick={() => agregarAlCarrito(producto)}>
+                        <PlusCircle size={18} /> Agregar </button>
+                        </div>
+
+                       </div>
+                       </article>
+                      ))}
+                    </div>
+                    </section>)
+                  })}
         </div>
+        
+        <section className="cart-section">
+          <div className="cart-heading">
+            <div>
+              <p className="eyebrow">TU COMPRA</p>
+              <h2>Mi carrito</h2>
+            </div>
+
+            <span className="cart-count">
+              {carrito.reduce((suma, item) => suma + item.cantidad, 0)} productos
+            </span>
+          </div>
+
+          {carrito.length === 0 ? (
+            <p className="cart-empty">
+              Tu carrito está vacío. Agrega tus productos favoritos del menú.
+            </p>
+          ) : (
+            <>
+              <div className="cart-items">
+                {carrito.map((item) => (
+                  <article className="cart-item" key={item.id}>
+                    <div className="cart-item-info">
+                      <h3>{item.nombre}</h3>
+                      <p>
+                        ${Number(item.precio).toFixed(2)} por unidad
+                      </p>
+                    </div>
+
+                    <div className="cart-item-actions">
+                      <button
+                        type="button"
+                        onClick={() => cambiarCantidadCarrito(item.id, -1)}
+                        aria-label={`Disminuir cantidad de ${item.nombre}`}
+                      >
+                        −
+                      </button>
+
+                      <span>{item.cantidad}</span>
+
+                      <button
+                        type="button"
+                        onClick={() => cambiarCantidadCarrito(item.id, 1)}
+                        aria-label={`Aumentar cantidad de ${item.nombre}`}
+                      >
+                        +
+                      </button>
+                    </div>
+
+                    <strong className="cart-item-subtotal">
+                      ${(Number(item.precio) * item.cantidad).toFixed(2)}
+                    </strong>
+
+                    <button
+                      type="button"
+                      className="cart-remove-button"
+                      onClick={() => eliminarDelCarrito(item.id)}
+                    >
+                      Eliminar
+                    </button>
+                  </article>
+                ))}
+              </div>
+
+              
+<div className="cart-summary">
+  <span>Total de la compra</span>
+  <strong>${totalCarrito.toFixed(2)}</strong>
+</div>
+
+<div className="cart-checkout">
+  <label htmlFor="direccion-entrega">
+    Dirección de entrega
+  </label>
+
+  <input
+    id="direccion-entrega"
+    type="text"
+    value={direccion}
+    onChange={(event) => setDireccion(event.target.value)}
+    placeholder="Dirección de entrega"
+    maxLength={300}
+  />
+
+  <button
+    type="button"
+    onClick={crearPedidoDesdeCarrito}
+    disabled={guardando || carrito.length === 0}
+  >
+    {guardando ? 'Procesando pedido...' : 'Confirmar compra'}
+  </button>
+</div>
+
+            </>
+          )}
+        </section>
+
       </section>
       </>)}
       {pestanaActiva === 'pedidos' && (<>
       <section id="pedidos" className="orders-section">
-        <div className="section-heading section-heading-modern">
-          <div className="section-title-group">
+        <div className="section-heading">
+          <div>
             <p className="eyebrow">GESTIÓN DE PEDIDOS</p>
             <h2>Registrar un pedido</h2>
-            <p>Registra nuevos pedidos y consulta su información.</p>
           </div>
-          <div className="orders-header-note">
-            <span className="orders-status-indicator" />
-            Conectado con la base de datos
-          </div>
+
+          <p>Los datos se guardan en la base de datos del sistema.</p>
         </div>
+
         <form className="order-form" onSubmit={crearPedido}>
           <div className="form-field">
             <label htmlFor="clienteId">ID del cliente</label>
@@ -487,7 +784,7 @@ export default function App() {
               type="text"
               minLength="5"
               maxLength="300"
-              placeholder="Ej. Colonia Escalón, San Salvador"
+              placeholder="Dirección de entrega"
               value={direccion}
               onChange={(event) => setDireccion(event.target.value)}
               required
@@ -646,14 +943,15 @@ export default function App() {
         )}
       </section>
       </> )}
-      {pestanaActiva === 'administracion' && (
+
+            {pestanaActiva === 'administracion' && (
         <section className="workspace-section">
           <div className="section-heading">
             <div>
               <p className="eyebrow">PANEL DE CONTROL</p>
               <h2>Administración</h2>
             </div>
-            <p>Gestiona y supervisa las operaciones de Delivery Express.</p>
+            <p>Gestiona los productos y supervisa las operaciones de Delivery Express.</p>
           </div>
 
           <div className="workspace-grid">
@@ -661,15 +959,80 @@ export default function App() {
               <div className="module-icon">
                 <ShoppingBag size={23} />
               </div>
-              <h3>Catálogo de productos</h3>
-              <p>Consulta las categorías y los productos disponibles.</p>
-              <button
-                className="module-status"
-                type="button"
-                onClick={() => setPestanaActiva('catalogo')}
-              >
-                Ver catálogo <span>↗</span>
-              </button>
+              <h3>Agregar producto</h3>
+              <p>Registra nuevos productos en el catálogo.</p>
+
+              <form onSubmit={agregarProducto} className="product-form">
+                <label htmlFor="nuevo-nombre">Nombre del producto</label>
+                <input
+                  id="nuevo-nombre"
+                  value={nuevoNombre}
+                  onChange={(e) => setNuevoNombre(e.target.value)}
+                  placeholder="Ej. Hamburguesa especial"
+                  required
+                />
+
+                <label htmlFor="nueva-descripcion">Descripción</label>
+                <textarea
+                  id="nueva-descripcion"
+                  value={nuevaDescripcion}
+                  onChange={(e) => setNuevaDescripcion(e.target.value)}
+                  placeholder="Describe el producto"
+                  rows={3}
+                />
+
+                <label htmlFor="nuevo-precio">Precio ($)</label>
+                <input
+                  id="nuevo-precio"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={nuevoPrecio}
+                  onChange={(e) => setNuevoPrecio(e.target.value)}
+                  placeholder="Ej. 5.99"
+                  required
+                />
+
+                <label htmlFor="nueva-categoria">Categoría</label>
+                <select
+                  id="nueva-categoria"
+                  value={nuevaCategoria}
+                  onChange={(e) => setNuevaCategoria(e.target.value)}
+                  required
+                >
+                  <option value="">Selecciona una categoría</option>
+                  {categorias.map((categoria) => (
+                    <option key={categoria.id} value={categoria.id}>
+                      {categoria.nombre}
+                    </option>
+                  ))}
+                </select>
+
+                <label htmlFor="nueva-imagen">URL de imagen (opcional)</label>
+                <input
+                  id="nueva-imagen"
+                  type="url"
+                  value={nuevaImagen}
+                  onChange={(e) => setNuevaImagen(e.target.value)}
+                  placeholder="https://ejemplo.com/imagen.jpg"
+                />
+
+                {mensajeProducto && (
+                  <p className="success-message">{mensajeProducto}</p>
+                )}
+
+                {errorProducto && (
+                  <p className="error-message">{errorProducto}</p>
+                )}
+
+                <button
+                  className="primary-button"
+                  type="submit"
+                  disabled={guardandoProducto}
+                >
+                  {guardandoProducto ? 'Guardando...' : 'Agregar producto'}
+                </button>
+              </form>
             </article>
 
             <article className="module-card">
